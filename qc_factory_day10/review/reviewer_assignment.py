@@ -13,7 +13,13 @@ def load_team_members(team_md: Path) -> list[str]:
         return ["Reviewer-1", "Reviewer-2", "Reviewer-3"]
     members: list[str] = []
     for line in team_md.read_text(encoding="utf-8").splitlines():
-        if line.startswith("|") and not line.startswith("|---") and "Họ tên" not in line and "Thành viên" not in line:
+        if (
+            line.startswith("|")
+            and not line.startswith("|---")
+            and "Họ tên" not in line
+            and "Họ và tên" not in line
+            and "Thành viên" not in line
+        ):
             cols = [c.strip() for c in line.strip("|").split("|")]
             if cols and cols[0]:
                 handle = next((c for c in cols if c.startswith("@") or "`@" in c), "")

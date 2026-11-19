@@ -326,6 +326,8 @@ def cross_check_candidates(delivery: Path) -> list[dict]:
             if best_sid is None or best_frac < PAIR_MIN_MASK_IOU:
                 continue
             covered_seg.add(best_sid)
+            if not det_name:
+                continue
             seg_name = cat_name[seg_info[best_sid]["category_id"]]
             seg_pix_box = seg_boxes[best_sid]
             if seg_name != det_name:
@@ -364,17 +366,124 @@ def cross_check_candidates(delivery: Path) -> list[dict]:
                 covered_seg.add(sid)
         for sid, info in seg_info.items():
             if sid not in covered_seg and info["area"] >= MISSING_BOX_MIN_FRAC * width * height:
-                candidates.append({"type": "missing_box", "target": name, "score": round(info["area"] / (width * height), 4),
-                                   "evidence": f"segment {cat_name[info['category_id']]} lớn không có box"})
+                is_crowd = int(info.get("iscrowd", 0)) == 1
+                frac = info["area"] / (width * height)
+                score = round(frac * (0.3 if is_crowd else 1.0), 4)
+                crowd_tag = " [iscrowd=1: dễ là lệch tự nhiên]" if is_crowd else ""
+                candidates.append({
+                    "type": "missing_box",
+                    "target": name,
+                    "score": score,
+                    "evidence": f"segment {cat_name[info['category_id']]} lớn không có box{crowd_tag}",
+                })
 
     return candidates
 
 
+def write_review_html(delivery: Path, rules: list[dict], cands: list[dict], html_path: Path) -> None:
+    """Tạo trang HTML trực quan (100% stdlib) vẽ box YOLO lên ảnh để review nhanh."""
+    import html as html_lib
+    import os
+
+    manifest = load_json(delivery / "manifest.json", [], {"items": {}})
+    class_names = load_classes(delivery / "classes.txt")
+    items = manifest.get("items", {})
+    html_path.parent.mkdir(parents=True, exist_ok=True)
+    base_dir = html_path.resolve().parent
+
+    cards: list[str] = []
+    for c in sorted(cands, key=lambda x: (-float(x.get("score", 0)), x["type"], x["target"])):
+        target = c["target"]
+        item = items.get(target, {})
+        img_p = _safe_rel_path(delivery, item.get("image", ""))
+        lbl_p = _safe_rel_path(delivery, item.get("label", ""))
+        if not img_p or not img_p.exists():
+            continue
+        rel_img = Path(os.path.relpath(img_p.resolve(), base_dir)).as_posix()
+        rects = []
+        if lbl_p and lbl_p.exists():
+            for cls_id, box in read_yolo(lbl_p):
+                if cls_id is None or box is None:
+                    continue
+                xc, yc, bw, bh = box
+                x1 = max(0.0, (xc - bw / 2) * 100)
+                y1 = max(0.0, (yc - bh / 2) * 100)
+                w_pct = min(100.0 - x1, bw * 100)
+                h_pct = min(100.0 - y1, bh * 100)
+                cname = html_lib.escape(class_names.get(cls_id, f"id:{cls_id}"))
+                rects.append(
+                    f'<rect x="{x1:.2f}%" y="{y1:.2f}%" width="{w_pct:.2f}%" height="{h_pct:.2f}%" '
+                    f'fill="none" stroke="#00e5ff" stroke-width="2"/>'
+                    f'<text x="{x1:.2f}%" y="{max(3.0, y1 + 3):.2f}%" fill="#ffeb3b" '
+                    f'font-size="12" font-weight="bold" paint-order="stroke" stroke="#000" stroke-width="3">{cname}</text>'
+                )
+        ev = html_lib.escape(c.get("evidence", ""))
+        ctype = html_lib.escape(c["type"])
+        cards.append(
+            f'<div class="card" data-type="{ctype}">'
+            f'<div class="meta"><span class="badge {ctype}">{ctype}</span> '
+            f'<b>{html_lib.escape(target)}</b> <span class="score">score: {c.get("score", 0)}</span></div>'
+            f'<div class="ev">{ev}</div>'
+            f'<div class="img-wrap"><img src="{html_lib.escape(rel_img)}" loading="lazy"/>'
+            f'<svg viewBox="0 0 100 100" preserveAspectRatio="none">{"".join(rects)}</svg></div>'
+            f'</div>'
+        )
+
+    rule_rows = "".join(
+        f"<li><b>{html_lib.escape(e['type'])}</b>: <code>{html_lib.escape(e['target'])}</code></li>"
+        for e in sorted(rules, key=lambda x: (x["type"], x["target"]))
+    )
+    page = f"""<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"/>
+<title>QC Review Gallery — {html_lib.escape(delivery.name)}</title>
+<style>
+body{{font-family:system-ui,sans-serif;margin:16px;background:#f5f7fa;color:#111}}
+.bar{{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}}
+button{{padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;cursor:pointer;font-weight:600}}
+button.active{{background:#0f172a;color:#fff;border-color:#0f172a}}
+.rules{{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px 18px;margin-bottom:16px}}
+.grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px}}
+.card{{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px}}
+.meta{{display:flex;justify-content:space-between;align-items:center;font-size:14px}}
+.badge{{padding:2px 8px;border-radius:4px;font-size:12px;font-weight:700;color:#fff;background:#475569}}
+.badge.class_swap{{background:#dc2626}}.badge.missing_box{{background:#d97706}}
+.badge.instance_merge{{background:#7c3aed}}.badge.bbox_drift{{background:#0284c7}}
+.ev{{font-size:13px;color:#334155}}
+.img-wrap{{position:relative;width:100%;aspect-ratio:4/3;background:#0f172a;overflow:hidden;border-radius:6px}}
+.img-wrap img,.img-wrap svg{{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}}
+</style></head><body>
+<h2>QC Review Gallery — {html_lib.escape(str(delivery))}</h2>
+<p>Lỗi luật (tự động): <b>{len(rules)}</b> | Ứng viên cần mắt người xem: <b>{len(cands)}</b></p>
+<details class="rules"><summary><b>Danh sách {len(rules)} lỗi luật (bấm để mở)</b></summary><ul>{rule_rows}</ul></details>
+<div class="bar">
+  <button class="active" onclick="filt('all',this)">Tất cả ({len(cards)})</button>
+  <button onclick="filt('class_swap',this)">class_swap</button>
+  <button onclick="filt('missing_box',this)">missing_box</button>
+  <button onclick="filt('instance_merge',this)">instance_merge</button>
+  <button onclick="filt('bbox_drift',this)">bbox_drift</button>
+</div>
+<div class="grid">{"".join(cards)}</div>
+<script>
+function filt(t,btn){{
+  document.querySelectorAll('.bar button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.card').forEach(c=>{{
+    c.style.display=(t==='all'||c.dataset.type===t)?'flex':'none';
+  }});
+}}
+</script></body></html>"""
+    html_path.write_text(page, encoding="utf-8")
+
+
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Validator luật Day 10 (chỉ thư viện chuẩn)")
+    ap = argparse.ArgumentParser(
+        description="Validator luật & đối chiếu Day 10 (100% Python stdlib, chỉ đọc delivery/).",
+        epilog="Ví dụ: py -X utf8 validator/validate.py runs/r9007/delivery --out errors.json --candidates candidates.json --html review.html",
+    )
     ap.add_argument("delivery", help="thư mục delivery (chỉ đọc)")
-    ap.add_argument("--out", required=True, help="đường dẫn errors.json")
+    ap.add_argument("--out", default="errors.json", help="đường dẫn errors.json (mặc định: errors.json)")
     ap.add_argument("--candidates", help="ghi thêm candidates.json (ứng viên lỗi gán nhãn)")
+    ap.add_argument("--html", help="xuất trang HTML trực quan (vẽ box YOLO lên ảnh) để review nhanh")
     args = ap.parse_args()
 
     delivery = Path(args.delivery)
@@ -393,13 +502,20 @@ def main() -> int:
     for kind in sorted(counts):
         print(f"  {kind}: {counts[kind]}")
 
-    if args.candidates:
+    cands: list[dict] = []
+    if args.candidates or args.html:
         cands = cross_check_candidates(delivery)
-        cands.sort(key=lambda c: (c["type"], c["target"]))
+        cands.sort(key=lambda c: (-float(c.get("score", 0)), c["type"], c["target"]))
+    if args.candidates:
+        Path(args.candidates).parent.mkdir(parents=True, exist_ok=True)
         Path(args.candidates).write_text(json.dumps({"candidates": cands}, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"ứng viên gán nhãn: {len(cands)} -> {args.candidates}")
         for kind, n in sorted(Counter(c["type"] for c in cands).items()):
             print(f"  {kind}: {n}")
+    if args.html:
+        html_p = Path(args.html)
+        write_review_html(delivery, rules, cands, html_p)
+        print(f"HTML review gallery: {html_p}")
     return 0
 
 

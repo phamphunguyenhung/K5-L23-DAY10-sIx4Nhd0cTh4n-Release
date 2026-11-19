@@ -14,3 +14,8 @@ _private/
 .env.*
 *.pem
 *.key
+
+# Dataset images & heavy archives (keep docs/assets/ and code/docs/*.md)
+submission/**/images/
+submission/**/masks/
+handover_zips/
