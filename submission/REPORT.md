@@ -30,11 +30,11 @@ Trong bộ `clean` (50 ảnh không gài lỗi), vẫn có `7` ứng viên sinh 
   3. *Quyền riêng tư & bảo mật (Privacy/Security):* Hash không thể phân biệt ảnh có chứa khuôn mặt người thật chưa làm mờ hay thông tin nhạy cảm.
 
 ## 5. Truy vết
-- **Tiêu chí tầng `a` và `b` (`trace.json`):**
-  - `tier_a` (4 ảnh): ảnh thuộc các scene nêu trong `incoming/ticket.md`, thuộc job dùng guideline cũ (`v1.2`) trong `jobs.csv`, và có ít nhất 1 box detection thuộc lớp bị đổi quy tắc trong `guideline/changelog.md`.
-  - `tier_b` (5 ảnh): các ảnh còn lại toàn lô thỏa điều kiện (job guideline `v1.2`, có box lớp bị đổi quy tắc) nhưng chưa được nhắc trong ticket.
-  - `notify` (4 người): mã `annotator` và `reviewer` từ `jobs.csv` của các job chứa ảnh `tier_a` và `tier_b`.
-- **Vì sao lấy guideline theo `jobs.csv`:** Trường `guideline_version` trên từng ảnh trong `metadata.json` có thể chính là đối tượng bị lỗi `guideline_mismatch`; `jobs.csv` là nguồn chuẩn ghi phiên bản guideline áp dụng cho cả job.
+- `guideline/changelog.md` ghi quy tắc của lớp `cup` thay đổi từ v1.2 sang v1.3. Ticket nêu `scene_303` và `scene_859`.
+- `tier_a` có **4 ảnh** thuộc hai cảnh được báo. `tier_b` có **3 ảnh** ở các cảnh còn lại. Cả hai tầng đều yêu cầu job theo v1.2 và ít nhất một box detection lớp `cup` trong nhãn v1.
+- `notify` có **2 người**, `A03` và `Q01`, là người gán và người kiểm của job `J02` chứa các ảnh thuộc hai tầng.
+- Guideline lấy từ `jobs.csv` vì `guideline_version` trên từng ảnh có thể bị lỗi `guideline_mismatch`. `metadata.json` dùng để nối mã ảnh với cảnh và job.
+- Đã đối chiếu kết quả với các nhãn YOLO trong lô r9007. Kết quả cũ đưa hai ảnh chỉ có box `train` vào `tier_b` vì ticket dùng từ `train` để nói về huấn luyện. Kết quả mới lấy tên lớp chính xác từ changelog. `score_findings.py --run runs/r9007` báo F1 làm tròn **1.0** cho cả ba trường truy vết.
 
 ## 6. Bug hoặc điểm chưa rõ trong lab (nếu có)
 - Trên Windows, `sqlite3.connect()` dùng với `with` chỉ commit/rollback chứ không đóng file handle, gây lỗi `PermissionError` khi dọn thư mục tạm trong test; đã khắc phục bằng `@contextmanager` đóng connection tường minh trong `qc_factory_day10/review/review_store.py`.

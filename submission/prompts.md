@@ -67,3 +67,9 @@ của `python3 tools/qc_factory.py benchmark`.
 - Ứng viên `class_swap` ở `000000013774` có `evidence` ghi `box=` rỗng; kiểm lại nhãn thấy dòng
   `80 ...` — `class_id` ngoài 0–79, ảnh đã bị bắt `invalid_class`, nên ứng viên này nhiều khả năng là
   báo thừa.
+
+## 5. P5 — Truy vết ticket với Codex
+
+- Prompt đã dùng là “đã pull code mới về, tiến hành làm P5”.
+- Codex phát hiện logic cũ dò mọi tên lớp xuất hiện trong ticket nên từ `train` trong câu về huấn luyện cũng được tính là lớp đổi quy tắc. Code P5 đọc chính xác mục đổi lớp trong changelog và lấy guideline theo `jobs.csv`.
+- Đã chạy test hồi quy với tên lớp lồng nhau, guideline ảnh khác guideline job, nhãn thiếu và dòng YOLO hỏng. Đã đối chiếu ba danh sách trên lô r9007 với ticket, changelog, nhãn YOLO và `jobs.csv`, rồi tự đo một lần bằng `score_findings.py --run runs/r9007`.

@@ -9,4 +9,4 @@
 - **clean_calib_50 candidates:** `{'class_swap': 1, 'missing_box': 6}`
 - **practice_r9007_250 rule errors:** `{'bbox_out_of_bounds': 2, 'duplicate_box': 1, 'guideline_mismatch': 2, 'invalid_category_id': 1, 'invalid_class': 2, 'missing_image': 1, 'scene_leak': 1, 'thing_overlap': 2, 'wrong_hash': 2}`
 - **practice_r9007_250 candidates:** `{'bbox_drift': 1, 'class_swap': 10, 'instance_merge': 5, 'missing_box': 15}`
-- **practice_r9007_250 trace counts:** `{'tier_a': 4, 'tier_b': 5, 'notify': 4}`
+- **practice_r9007_250 trace counts:** `{'tier_a': 4, 'tier_b': 3, 'notify': 2}` (P5 rerun)
